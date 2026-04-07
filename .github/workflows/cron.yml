@@ -1,0 +1,27 @@
+name: auto-checkin
+
+on:
+  schedule:
+    - cron: '0 21 * * *'   # 每天 UTC 21点（北京时间凌晨5点）
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: 执行脚本
+        env:
+          USER_ID: ${{ secrets.USER_ID }}
+        run: node index.js
+
