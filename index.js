@@ -1,7 +1,18 @@
 const puppeteer = require('puppeteer');
+const fs = require('fs');
+const path = require('path');
 
 const URL = 'https://knighthood-webstore.xsolla.site/';
 const USER_ID = process.env.USER_ID || '';
+const SCREENSHOT_DIR = path.join(__dirname, 'screenshots');
+fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+
+let stepIndex = 0;
+async function screenshot(page, name) {
+  const file = path.join(SCREENSHOT_DIR, `${String(++stepIndex).padStart(2, '0')}-${name}.png`);
+  await page.screenshot({ path: file, fullPage: true });
+  console.log(`📸 截图已保存: ${file}`);
+}
 
 if (!USER_ID) {
   console.error("❌ 未设置 USER_ID 环境变量");
@@ -37,6 +48,7 @@ if (!USER_ID) {
     waitUntil: 'networkidle2',
     timeout: 60000
   });
+  await screenshot(page, 'page-loaded');
 
   // ===== 登录流程 =====
   console.log("🔐 检查是否需要登录...");
@@ -70,8 +82,10 @@ if (!USER_ID) {
     });
 
     console.log("✅ 登录流程完成");
+    await screenshot(page, 'login-complete');
   } else {
     console.log("✅ 已登录");
+    await screenshot(page, 'already-logged-in');
   }
 
   // ===== 免费宝箱 =====
@@ -95,6 +109,7 @@ if (!USER_ID) {
 
       await freeBtn.click();
       await new Promise(r => setTimeout(r, 2000));
+      await screenshot(page, 'free-chest-clicked');
 
       const modalHandle = await page.evaluateHandle(() => {
         const selectors = '[class*="upsell-modal"], [class*="free-item"], .ui-site-modal-window';
@@ -111,6 +126,7 @@ if (!USER_ID) {
       if (modal) {
         const modalClass = await page.evaluate(el => el.className, modal);
         console.log("✅ 免费宝箱领取成功，弹窗 class:", modalClass);
+        await screenshot(page, 'free-chest-success');
 
         try {
           const closeBtn = await page.$('.ui-site-modal-window__close, [class*="modal-window__close"], [class*="modal__close"]');
@@ -129,12 +145,15 @@ if (!USER_ID) {
         await new Promise(r => setTimeout(r, 1000));
       } else {
         console.log("⚠️ 未检测到成功弹窗（可能已领取或领取失败）");
+        await screenshot(page, 'free-chest-no-modal');
       }
     } else {
       console.log("ℹ️ 免费宝箱今日已领取，跳过");
+      await screenshot(page, 'free-chest-already-claimed');
     }
   } else {
     console.log("❌ 没找到免费宝箱按钮");
+    await screenshot(page, 'free-chest-not-found');
   }
 
   // ===== 每周宝箱 =====
@@ -155,6 +174,7 @@ if (!USER_ID) {
       console.log("👉 准备领取 每周宝箱");
       await weekBtn.click();
       await new Promise(r => setTimeout(r, 3000));
+      await screenshot(page, 'weekly-chest-clicked');
 
       const weekModalHandle = await page.evaluateHandle(() => {
         const selectors = '[class*="upsell-modal"], [class*="free-item"], .ui-site-modal-window';
@@ -170,6 +190,7 @@ if (!USER_ID) {
 
       if (weekModal) {
         console.log("✅ 每周宝箱领取成功");
+        await screenshot(page, 'weekly-chest-success');
         try {
           const closeBtn = await page.$('.ui-site-modal-window__close, [class*="modal-window__close"], [class*="modal__close"]');
           if (closeBtn) {
@@ -182,14 +203,18 @@ if (!USER_ID) {
         }
       } else {
         console.log("⚠️ 每周宝箱领取后未检测到弹窗（可能已领取或领取失败）");
+        await screenshot(page, 'weekly-chest-no-modal');
       }
     } else {
       console.log("ℹ️ 每周宝箱本周已领取，跳过");
+      await screenshot(page, 'weekly-chest-already-claimed');
     }
   } else {
     console.log("❌ 没找到每周宝箱按钮");
+    await screenshot(page, 'weekly-chest-not-found');
   }
 
+  await screenshot(page, 'task-complete');
   console.log("🏁 任务完成");
   await browser.close();
 })();
