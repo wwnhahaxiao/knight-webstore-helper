@@ -91,68 +91,67 @@ if (!USER_ID) {
   // ===== 免费宝箱 =====
   console.log("🎁 检查免费宝箱...");
 
-  const freeBtn = await page.waitForSelector('[id$="goldchestfree"]', {
+  const buyBtn = await page.waitForSelector('[id^="store-buy-button-"][id$="goldchestfree"]', {
     timeout: 60000
   }).catch(() => null);
 
-  if (freeBtn) {
+  if (buyBtn) {
+    const isDisabled = await page.evaluate(el => el.disabled, buyBtn);
     const freeText = await page.evaluate(el => {
       const card = el.closest('.item-card, .product-card, [class*="card"]') || el.parentElement;
       return card ? card.innerText : '';
-    }, freeBtn);
+    }, buyBtn);
+    console.log("🔍 免费宝箱状态:", isDisabled ? "已领取(按钮禁用)" : "可领取", "| 文本:", freeText.replace(/\n/g, ' ').substring(0, 200));
 
-    const freeClaimed = freeText.includes('Claimed');
-    console.log("🔍 免费宝箱状态:", freeClaimed ? "已领取" : "可领取", "| 文本:", freeText.replace(/\n/g, ' ').substring(0, 200));
-
-    if (!freeClaimed) {
-      console.log("👉 准备领取 免费宝箱");
-
-      await freeBtn.click();
-      await new Promise(r => setTimeout(r, 2000));
+    if (!isDisabled) {
+      console.log("👉 点击免费宝箱购买按钮...");
+      await buyBtn.click();
       await screenshot(page, 'free-chest-clicked');
 
-      const modalHandle = await page.evaluateHandle(() => {
-        const selectors = '[class*="upsell-modal"], [class*="free-item"], .ui-site-modal-window';
-        const elements = document.querySelectorAll(selectors);
-        for (const el of elements) {
-          if (el.className.includes('user-id-modal')) continue;
-          if (el.offsetParent !== null || getComputedStyle(el).display !== 'none') return el;
-        }
-        return null;
-      });
+      const freeModal = await page.waitForSelector('.free-item-modal', {
+        timeout: 60000
+      }).catch(() => null);
 
-      const modal = modalHandle.asElement();
+      if (freeModal) {
+        console.log("✅ 免费宝箱弹窗已出现");
+        await screenshot(page, 'free-chest-modal');
 
-      if (modal) {
-        const modalClass = await page.evaluate(el => el.className, modal);
-        console.log("✅ 免费宝箱领取成功，弹窗 class:", modalClass);
-        await screenshot(page, 'free-chest-success');
-
-        try {
-          const closeBtn = await page.$('.ui-site-modal-window__close, [class*="modal-window__close"], [class*="modal__close"]');
-          if (closeBtn) {
-            await closeBtn.click();
-            console.log("✅ 已关闭弹窗");
-          } else {
-            await page.keyboard.press('Escape');
-            console.log("✅ 已用 Escape 关闭弹窗");
-          }
-        } catch (e) {
-          await page.keyboard.press('Escape');
-          console.log("✅ 已用 Escape 关闭弹窗");
+        const confirmBtn = await freeModal.$('.simple-button, .xds-button');
+        if (confirmBtn) {
+          console.log("🔹 点击领取确认按钮...");
+          await confirmBtn.click();
+          await new Promise(r => setTimeout(r, 2000));
+          await screenshot(page, 'free-chest-confirmed');
+        } else {
+          console.log("⚠️ 未找到确认按钮");
+          await screenshot(page, 'free-chest-no-confirm');
         }
 
-        await new Promise(r => setTimeout(r, 1000));
+        const backToStoreBtn = await page.waitForSelector(
+          '.button.button--min-width.button--large.xds-text-button-md',
+          { timeout: 60000 }
+        ).catch(() => null);
+
+        if (backToStoreBtn) {
+          console.log("🔹 点击返回商店...");
+          await backToStoreBtn.click();
+          await new Promise(r => setTimeout(r, 2000));
+          console.log("✅ 免费宝箱领取完成，已返回商店");
+          await screenshot(page, 'free-chest-success');
+        } else {
+          console.log("⚠️ 未找到返回商店按钮");
+          await screenshot(page, 'free-chest-no-back-btn');
+        }
       } else {
-        console.log("⚠️ 未检测到成功弹窗（可能已领取或领取失败）");
+        console.log("⚠️ 未检测到免费宝箱弹窗（可能领取失败）");
         await screenshot(page, 'free-chest-no-modal');
       }
     } else {
-      console.log("ℹ️ 免费宝箱今日已领取，跳过");
+      console.log("ℹ️ 免费宝箱今日已领取（按钮禁用），跳过");
       await screenshot(page, 'free-chest-already-claimed');
     }
   } else {
-    console.log("❌ 没找到免费宝箱按钮");
+    console.log("❌ 没找到免费宝箱购买按钮");
     await screenshot(page, 'free-chest-not-found');
   }
 
