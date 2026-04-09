@@ -84,6 +84,25 @@ if (!USER_ID) {
 
         console.log("✅ 登录流程完成");
         await screenshot(page, 'login-complete');
+
+        // 关闭登录成功弹窗
+        const successModal = await page.$('.successful-login-modal');
+        if (successModal) {
+            const continueBtn = await successModal.$('button');
+            if (continueBtn) {
+                console.log("🔹 关闭登录成功弹窗（点击 Continue）...");
+                await page.evaluate(el => el.click(), continueBtn);
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+
+        // 关闭 upsell 弹窗（如果出现）
+        const upsellClose = await page.$('.upsell-modal__close');
+        if (upsellClose) {
+            console.log("🔹 关闭 upsell 弹窗...");
+            await page.evaluate(el => el.click(), upsellClose);
+            await new Promise(r => setTimeout(r, 1000));
+        }
     } else {
         console.log("✅ 已登录");
         await screenshot(page, 'already-logged-in');
@@ -105,92 +124,56 @@ if (!USER_ID) {
         console.log("🔍 免费宝箱状态:", isDisabled ? "已领取(按钮禁用)" : "可领取", "| 文本:", freeText.replace(/\n/g, ' ').substring(0, 200));
 
         if (!isDisabled) {
-            console.log("👉 点击免费宝箱购买按钮（DOM click）...");
+            console.log("👉 点击免费宝箱购买按钮...");
             await page.evaluate(el => el.scrollIntoView({ block: 'center' }), buyBtn);
             await new Promise(r => setTimeout(r, 500));
             await page.evaluate(el => el.click(), buyBtn);
             await new Promise(r => setTimeout(r, 3000));
             await screenshot(page, 'free-chest-clicked');
 
-            // 调试：输出点击后页面上出现的所有弹窗/modal 信息
-            const debugModals = await page.evaluate(() => {
-                const allModals = document.querySelectorAll('[class*="modal"], [class*="Modal"], [class*="dialog"], [class*="Dialog"], [class*="popup"], [class*="Popup"]');
-                return Array.from(allModals).map(el => ({
-                    tag: el.tagName,
-                    className: el.className,
-                    visible: el.offsetParent !== null || getComputedStyle(el).display !== 'none',
-                    text: el.innerText?.substring(0, 100) || ''
-                }));
-            });
-            console.log("🔍 页面弹窗调试:", JSON.stringify(debugModals, null, 2));
-
-            const freeModal = await page.waitForSelector('.free-item-modal', {
+            // 点击后等待 claimed-item-modal（领取成功的确认弹窗）
+            const claimedModal = await page.waitForSelector('[class*="claimed-item-modal"]', {
                 visible: true,
                 timeout: 15000
             }).catch(() => null);
 
-            if (!freeModal) {
-                console.log("⚠️ .free-item-modal 未出现，尝试查找其他弹窗...");
-                await screenshot(page, 'free-chest-no-free-item-modal');
-            }
+            if (claimedModal) {
+                const itemName = await page.evaluate(() => {
+                    const el = document.querySelector('.claimed-item-modal__item-name');
+                    return el ? el.innerText : '';
+                });
+                console.log("✅ 免费宝箱领取成功！物品:", itemName);
+                await screenshot(page, 'free-chest-claimed');
 
-            // 兼容查找：优先 .free-item-modal，否则找任何可见的 modal
-            const modalCtx = freeModal || await page.evaluateHandle(() => {
-                const candidates = document.querySelectorAll('[class*="modal"], [class*="Modal"]');
-                for (const el of candidates) {
-                    if (el.className.includes('user-id-modal')) continue;
-                    const style = getComputedStyle(el);
-                    if ((el.offsetParent !== null || style.display !== 'none') && el.innerText.trim().length > 0) {
-                        return el;
-                    }
-                }
-                return null;
-            }).then(h => h.asElement());
-
-            if (modalCtx) {
-                console.log("✅ 检测到弹窗，准备确认领取");
-                await screenshot(page, 'free-chest-modal');
-
-                const confirmBtn = await modalCtx.$('.simple-button, .xds-button');
-                if (confirmBtn) {
-                    console.log("🔹 点击领取确认按钮（DOM click）...");
-                    await page.evaluate(el => el.click(), confirmBtn);
-                    await new Promise(r => setTimeout(r, 3000));
-                    await screenshot(page, 'free-chest-confirmed');
-                } else {
-                    console.log("⚠️ 弹窗中未找到 .simple-button/.xds-button，尝试查找任意按钮...");
-                    const anyBtn = await modalCtx.$('button');
-                    if (anyBtn) {
-                        const btnText = await page.evaluate(el => el.innerText, anyBtn);
-                        console.log("🔹 找到按钮:", btnText, "，点击...");
-                        await page.evaluate(el => el.click(), anyBtn);
-                        await new Promise(r => setTimeout(r, 3000));
-                        await screenshot(page, 'free-chest-confirmed-fallback');
-                    } else {
-                        console.log("⚠️ 弹窗中未找到任何按钮");
-                        await screenshot(page, 'free-chest-no-confirm');
-                    }
-                }
-
-                const backToStoreBtn = await page.waitForSelector(
+                // 点击 "Back to store" 返回商店
+                const backBtn = await page.waitForSelector(
                     '.button.button--min-width.button--large.xds-text-button-md',
                     { visible: true, timeout: 15000 }
                 ).catch(() => null);
 
-                if (backToStoreBtn) {
-                    console.log("🔹 点击返回商店（DOM click）...");
-                    await page.evaluate(el => el.click(), backToStoreBtn);
+                if (backBtn) {
+                    console.log("🔹 点击返回商店...");
+                    await page.evaluate(el => el.click(), backBtn);
                     await new Promise(r => setTimeout(r, 2000));
-                    console.log("✅ 免费宝箱领取完成，已返回商店");
-                    await screenshot(page, 'free-chest-success');
+                    console.log("✅ 已返回商店");
                 } else {
-                    console.log("ℹ️ 未找到返回商店按钮（可能已自动关闭）");
+                    console.log("ℹ️ 未找到返回商店按钮，尝试 Escape 关闭");
                     await page.keyboard.press('Escape');
                     await new Promise(r => setTimeout(r, 1000));
-                    await screenshot(page, 'free-chest-done');
                 }
+                await screenshot(page, 'free-chest-done');
             } else {
-                console.log("⚠️ 点击后未检测到任何弹窗（领取可能失败）");
+                console.log("⚠️ 未检测到 claimed-item-modal，领取可能失败");
+                // 调试：输出当前页面所有弹窗
+                const debugModals = await page.evaluate(() => {
+                    const all = document.querySelectorAll('[class*="modal"]');
+                    return Array.from(all).map(el => ({
+                        className: el.className,
+                        visible: el.offsetParent !== null || getComputedStyle(el).display !== 'none',
+                        text: (el.innerText || '').substring(0, 80)
+                    }));
+                });
+                console.log("🔍 页面弹窗调试:", JSON.stringify(debugModals, null, 2));
                 await screenshot(page, 'free-chest-no-modal');
             }
         } else {
